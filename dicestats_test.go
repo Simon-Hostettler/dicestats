@@ -10,25 +10,28 @@ func almostEqual(a, b float64) bool {
 	return math.Abs(a-b) < 1e-9
 }
 
-func TestEval2d6Expected(t *testing.T) {
-	d, err := EvalString("2d6")
+func mustDist(t *testing.T, input string, opts ...Option) *Distribution {
+	t.Helper()
+	r, err := Query(input, opts...)
 	if err != nil {
-		t.Fatalf("EvalString error: %v", err)
+		t.Fatalf("Query(%q) error: %v", input, err)
 	}
+	if r.Distribution == nil {
+		t.Fatalf("Query(%q) returned nil distribution", input)
+	}
+	return r.Distribution
+}
+
+func TestEval2d6Expected(t *testing.T) {
+	d := mustDist(t, "2d6")
 	if !almostEqual(d.Expected(), 7.0) {
 		t.Fatalf("expected 7, got %f", d.Expected())
 	}
 }
 
 func TestRepeatDrawsIndependentNotScaled(t *testing.T) {
-	rep, err := EvalString("3(max(3,1d6+1))")
-	if err != nil {
-		t.Fatal(err)
-	}
-	scaled, err := EvalString("3*max(3,1d6+1)")
-	if err != nil {
-		t.Fatal(err)
-	}
+	rep := mustDist(t, "3(max(3,1d6+1))")
+	scaled := mustDist(t, "3*max(3,1d6+1)")
 	if math.Abs(rep.Expected()-14.0) > 1e-12 {
 		t.Fatalf("expected repeat EV 14.0, got %f", rep.Expected())
 	}
@@ -41,14 +44,8 @@ func TestRepeatDrawsIndependentNotScaled(t *testing.T) {
 }
 
 func TestRepeatDrawsOnDiceLiteralEquivalentToMultiDice(t *testing.T) {
-	rep, err := EvalString("3(1d6)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	dice, err := EvalString("3d6")
-	if err != nil {
-		t.Fatal(err)
-	}
+	rep := mustDist(t, "3(1d6)")
+	dice := mustDist(t, "3d6")
 	repPMF := rep.PMF()
 	dicePMF := dice.PMF()
 	if len(repPMF) != len(dicePMF) {
@@ -62,10 +59,7 @@ func TestRepeatDrawsOnDiceLiteralEquivalentToMultiDice(t *testing.T) {
 }
 
 func TestDistributionMethodsOn1d6(t *testing.T) {
-	d, err := EvalString("1d6")
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := mustDist(t, "1d6")
 	if !almostEqual(d.Expected(), 3.5) {
 		t.Fatalf("expected 3.5 got %f", d.Expected())
 	}
@@ -90,74 +84,44 @@ func TestDistributionMethodsOn1d6(t *testing.T) {
 }
 
 func TestKeepHighest(t *testing.T) {
-	d, err := EvalString("4d6kh3")
-	if err != nil {
-		t.Fatalf("EvalString error: %v", err)
-	}
+	d := mustDist(t, "4d6kh3")
 	if d.Min() != 3 || d.Max() != 18 {
 		t.Fatalf("unexpected range %d..%d", d.Min(), d.Max())
 	}
 }
 
 func TestKeepDropComplements(t *testing.T) {
-	kh, err := EvalString("4d6kh3")
-	if err != nil {
-		t.Fatal(err)
-	}
-	dl, err := EvalString("4d6dl1")
-	if err != nil {
-		t.Fatal(err)
-	}
+	kh := mustDist(t, "4d6kh3")
+	dl := mustDist(t, "4d6dl1")
 	if math.Abs(kh.Expected()-dl.Expected()) > 1e-12 {
 		t.Fatalf("kh3 and dl1 should match, got %f vs %f", kh.Expected(), dl.Expected())
 	}
 
-	kl, err := EvalString("4d6kl3")
-	if err != nil {
-		t.Fatal(err)
-	}
-	dh, err := EvalString("4d6dh1")
-	if err != nil {
-		t.Fatal(err)
-	}
+	kl := mustDist(t, "4d6kl3")
+	dh := mustDist(t, "4d6dh1")
 	if math.Abs(kl.Expected()-dh.Expected()) > 1e-12 {
 		t.Fatalf("kl3 and dh1 should match, got %f vs %f", kl.Expected(), dh.Expected())
 	}
 }
 
 func TestAdvantageBetterThanSingle(t *testing.T) {
-	one, err := EvalString("1d20")
-	if err != nil {
-		t.Fatal(err)
-	}
-	adv, err := EvalString("adv(1d20)")
-	if err != nil {
-		t.Fatal(err)
-	}
+	one := mustDist(t, "1d20")
+	adv := mustDist(t, "adv(1d20)")
 	if adv.Expected() <= one.Expected() {
 		t.Fatalf("expected advantage EV > single EV")
 	}
 }
 
 func TestWorstOfExpectedValue(t *testing.T) {
-	dis, err := EvalString("dis(1d20)")
-	if err != nil {
-		t.Fatal(err)
-	}
+	dis := mustDist(t, "dis(1d20)")
 	if math.Abs(dis.Expected()-7.175) > 1e-12 {
 		t.Fatalf("expected 7.175 got %f", dis.Expected())
 	}
 }
 
 func TestBestAndWorstOfThreeExpectedValues(t *testing.T) {
-	best, err := EvalString("best(3,1d20)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	worst, err := EvalString("worst(3,1d20)")
-	if err != nil {
-		t.Fatal(err)
-	}
+	best := mustDist(t, "best(3,1d20)")
+	worst := mustDist(t, "worst(3,1d20)")
 	if best.Expected() <= 13.825 {
 		t.Fatalf("best(3,1d20) should beat advantage EV, got %f", best.Expected())
 	}
@@ -177,10 +141,7 @@ func TestProbGateDamage(t *testing.T) {
 }
 
 func TestProbGateDistributionShape(t *testing.T) {
-	d, err := EvalString("P[1d20+10>15] * 1d4")
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := mustDist(t, "P[1d20+10>15] * 1d4")
 	pmf := d.PMF()
 	if _, ok := pmf[0]; !ok {
 		t.Fatal("expected miss branch at 0")
@@ -268,17 +229,11 @@ func TestDistAndBareExprQueries(t *testing.T) {
 }
 
 func TestClampFunctions(t *testing.T) {
-	d, err := EvalString("max(1, 1d4-2)")
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := mustDist(t, "max(1, 1d4-2)")
 	if d.Min() != 1 || d.Max() != 2 {
 		t.Fatalf("unexpected max clamp range %d..%d", d.Min(), d.Max())
 	}
-	d2, err := EvalString("min(20, 1d20+5)")
-	if err != nil {
-		t.Fatal(err)
-	}
+	d2 := mustDist(t, "min(20, 1d20+5)")
 	if d2.Min() != 6 || d2.Max() != 20 {
 		t.Fatalf("unexpected min clamp range %d..%d", d2.Min(), d2.Max())
 	}
@@ -297,53 +252,40 @@ func TestKeepDropGrammarIsDiceOnly(t *testing.T) {
 }
 
 func TestKeepDropValidationErrors(t *testing.T) {
-	if _, err := EvalString("4d6kh5"); err == nil {
+	if _, err := Query("4d6kh5"); err == nil {
 		t.Fatal("expected invalid keep count error")
 	}
-	if _, err := EvalString("4d6dl5"); err == nil {
+	if _, err := Query("4d6dl5"); err == nil {
 		t.Fatal("expected invalid drop count error")
 	}
 }
 
 func TestEstimateAvoidsUnnecessarySimulation(t *testing.T) {
-	d, err := EvalString("best(5,1d20)", WithSimulationThreshold(25), WithSimulationSamples(2000))
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := mustDist(t, "best(5,1d20)", WithSimulationThreshold(25), WithSimulationSamples(2000))
 	if d.Approximate() {
 		t.Fatal("best-of should not force simulation based on sample-space explosion")
 	}
 }
 
 func TestSimulationFallback(t *testing.T) {
-	d, err := EvalString("20d20*20d20", WithSimulationThreshold(1000), WithSimulationSamples(5000))
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := mustDist(t, "20d20*20d20", WithSimulationThreshold(1000), WithSimulationSamples(5000))
 	if !d.Approximate() {
 		t.Fatal("expected approximate distribution")
 	}
 }
 
 func TestNestedProbExprSimulationUsesConfig(t *testing.T) {
-	d, err := EvalString(
-		"P[P[20d20*20d20 > 20000] = 1] * 1d6",
+	d := mustDist(t, "P[P[20d20*20d20 > 20000] = 1] * 1d6",
 		WithSimulationThreshold(1000),
 		WithSimulationSamples(4000),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if !d.Approximate() {
 		t.Fatal("expected approximate distribution with nested simulation")
 	}
 }
 
 func TestKeepDropCompositionPathExact(t *testing.T) {
-	d, err := EvalString("8d6kh3", WithSimulationThreshold(5000), WithSimulationSamples(1000))
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := mustDist(t, "8d6kh3", WithSimulationThreshold(5000), WithSimulationSamples(1000))
 	if d.Approximate() {
 		t.Fatal("expected exact distribution for composition keep/drop path")
 	}
@@ -373,10 +315,7 @@ func TestDistributionNormalizationStable(t *testing.T) {
 }
 
 func TestNegativeOutcomeRange(t *testing.T) {
-	d, err := EvalString("1d6-10")
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := mustDist(t, "1d6-10")
 	if d.Min() != -9 || d.Max() != -4 {
 		t.Fatalf("unexpected range %d..%d", d.Min(), d.Max())
 	}
@@ -386,10 +325,7 @@ func TestNegativeOutcomeRange(t *testing.T) {
 }
 
 func TestSimulationAccuracyFor2d6Expected(t *testing.T) {
-	d, err := EvalString("2d6", WithSimulationThreshold(1), WithSimulationSamples(120000), WithSimulationSeed(42))
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := mustDist(t, "2d6", WithSimulationThreshold(1), WithSimulationSamples(120000), WithSimulationSeed(42))
 	if !d.Approximate() {
 		t.Fatal("expected approximate distribution")
 	}
@@ -416,17 +352,11 @@ func TestSharedCacheReuseAcrossQueries(t *testing.T) {
 
 func TestCacheSeparatesApproximateAndExactModes(t *testing.T) {
 	cache := NewCache()
-	approx, err := EvalString("10d10*10d10", WithCache(cache), WithSimulationThreshold(1000), WithSimulationSamples(5000), WithSimulationSeed(7))
-	if err != nil {
-		t.Fatal(err)
-	}
+	approx := mustDist(t, "10d10*10d10", WithCache(cache), WithSimulationThreshold(1000), WithSimulationSamples(5000), WithSimulationSeed(7))
 	if !approx.Approximate() {
 		t.Fatal("expected approximate distribution in low-threshold mode")
 	}
-	exact, err := EvalString("10d10*10d10", WithCache(cache), WithSimulationThreshold(20_000_000), WithSimulationSamples(5000), WithSimulationSeed(7))
-	if err != nil {
-		t.Fatal(err)
-	}
+	exact := mustDist(t, "10d10*10d10", WithCache(cache), WithSimulationThreshold(20_000_000), WithSimulationSamples(5000), WithSimulationSeed(7))
 	if exact.Approximate() {
 		t.Fatal("expected exact distribution to not be shadowed by approximate cache")
 	}
@@ -447,14 +377,10 @@ func TestSimulationStressLargeExpressionFastEnough(t *testing.T) {
 	}
 
 	start := time.Now()
-	d, err := EvalString(
-		"40d40*40d40 + 30d30",
+	d := mustDist(t, "40d40*40d40 + 30d30",
 		WithSimulationThreshold(100),
 		WithSimulationSamples(20000),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if !d.Approximate() {
 		t.Fatal("expected simulation to be used for stress expression")
 	}
@@ -470,14 +396,10 @@ func TestSimulationStressBatchFastEnough(t *testing.T) {
 
 	start := time.Now()
 	for i := 0; i < 25; i++ {
-		d, err := EvalString(
-			"50d20*50d20",
+		d := mustDist(t, "50d20*50d20",
 			WithSimulationThreshold(100),
 			WithSimulationSamples(2500),
 		)
-		if err != nil {
-			t.Fatal(err)
-		}
 		if !d.Approximate() {
 			t.Fatal("expected simulation in stress batch")
 		}
@@ -499,6 +421,40 @@ func TestParseErrors(t *testing.T) {
 	for _, tc := range cases {
 		if _, err := parse(tc); err == nil {
 			t.Fatalf("expected parse error for %q", tc)
+		}
+	}
+}
+
+func TestQueryResultString(t *testing.T) {
+	r, err := Query("E[2d6]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := r.String(); s != "7" {
+		t.Fatalf("expected '7' got %q", s)
+	}
+
+	r2, err := Query("2d6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2 := r2.String()
+	if s2 == "" {
+		t.Fatal("expected non-empty string for distribution result")
+	}
+}
+
+func TestQueryTypeString(t *testing.T) {
+	cases := map[QueryType]string{
+		QueryExpected:    "E",
+		QueryVariance:    "Var",
+		QueryStdDev:      "StdDev",
+		QueryDist:        "D",
+		QueryProbability: "P",
+	}
+	for qt, want := range cases {
+		if got := qt.String(); got != want {
+			t.Fatalf("QueryType(%d).String() = %q, want %q", qt, got, want)
 		}
 	}
 }

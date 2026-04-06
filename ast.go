@@ -3,7 +3,6 @@ package dicestats
 import (
 	"fmt"
 	"strconv"
-	"strings"
 )
 
 type expr interface {
@@ -137,29 +136,53 @@ func (k *keepDropExpr) Key() string {
 	return k.Kind.String() + "(" + k.Base.Key() + "," + strconv.Itoa(k.N) + ")"
 }
 
+type functionKind int
+
+const (
+	functionMax functionKind = iota
+	functionMin
+	functionBest
+	functionWorst
+	functionAdv
+	functionDis
+)
+
+var functionDefs = map[string]struct {
+	arity int
+	kind  functionKind
+}{
+	"max": {2, functionMax}, "min": {2, functionMin},
+	"best": {2, functionBest}, "worst": {2, functionWorst},
+	"adv": {1, functionAdv}, "dis": {1, functionDis},
+}
+
+// funcExpr is a resolved function call node. The parser validates
+// arity and resolves Kind so that eval never re-parses function names.
 type funcExpr struct {
-	Name string
-	Args []expr
+	Kind   functionKind
+	Name   string
+	First  expr
+	Second expr
+	N      int
 }
 
 func (*funcExpr) exprNode() {}
 func (f *funcExpr) Key() string {
-	parts := make([]string, 0, len(f.Args))
-	for _, a := range f.Args {
-		parts = append(parts, a.Key())
+	if f.Second != nil {
+		return f.Name + "(" + f.First.Key() + "," + f.Second.Key() + ")"
 	}
-	return strings.ToLower(f.Name) + "(" + strings.Join(parts, ",") + ")"
+	return f.Name + "(" + strconv.Itoa(f.N) + "," + f.First.Key() + ")"
 }
 
 type probExpr struct {
-	expr  expr
+	Inner expr
 	Cmp   Cmp
 	Value float64
 }
 
 func (*probExpr) exprNode() {}
 func (p *probExpr) Key() string {
-	return "P[" + p.expr.Key() + p.Cmp.String() + strconv.FormatFloat(p.Value, 'g', -1, 64) + "]"
+	return "P[" + p.Inner.Key() + p.Cmp.String() + strconv.FormatFloat(p.Value, 'g', -1, 64) + "]"
 }
 
 type QueryType int
@@ -172,27 +195,7 @@ const (
 	QueryDist
 )
 
-type queryExpr interface {
-	queryNode()
-}
-
-type statQuery struct {
+type queryExpr struct {
 	Type QueryType
-	expr expr
+	Expr expr
 }
-
-func (*statQuery) queryNode() {}
-
-type probQuery struct {
-	expr  expr
-	Cmp   Cmp
-	Value float64
-}
-
-func (*probQuery) queryNode() {}
-
-type distQuery struct {
-	expr expr
-}
-
-func (*distQuery) queryNode() {}

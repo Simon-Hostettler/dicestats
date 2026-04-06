@@ -3,6 +3,7 @@ package dicestats
 import (
 	"fmt"
 	"math/rand"
+	"sort"
 	"time"
 )
 
@@ -28,6 +29,33 @@ func simulateExpr(expr expr, cfg *config) (*Distribution, error) {
 		pmf[k] = float64(c) / float64(cfg.simulationSamples)
 	}
 	return newDistribution(pmf, true), nil
+}
+
+func sortedCopy(in []int) []int {
+	out := append([]int(nil), in...)
+	sort.Ints(out)
+	return out
+}
+
+func keptSumFromSorted(rolls []int, kind keepDropKind, keep int) int {
+	n := len(rolls)
+	if keep <= 0 {
+		return 0
+	}
+	sum := 0
+	switch kind {
+	case keepHighest, dropLowest:
+		for i := n - keep; i < n; i++ {
+			if i >= 0 {
+				sum += rolls[i]
+			}
+		}
+	case keepLowest, dropHighest:
+		for i := 0; i < keep && i < n; i++ {
+			sum += rolls[i]
+		}
+	}
+	return sum
 }
 
 func sampleExpr(expr expr, rng *rand.Rand, cfg *config) (int, error) {
@@ -81,17 +109,13 @@ func sampleExpr(expr expr, rng *rand.Rand, cfg *config) (int, error) {
 		}
 		return keptSumFromSorted(sortedCopy(rolls), e.Kind, keep), nil
 	case *funcExpr:
-		call, err := parseFunctionCall(e)
-		if err != nil {
-			return 0, err
-		}
-		switch call.kind {
+		switch e.Kind {
 		case functionMax:
-			a, err := sampleExpr(call.first, rng, cfg)
+			a, err := sampleExpr(e.First, rng, cfg)
 			if err != nil {
 				return 0, err
 			}
-			b, err := sampleExpr(call.second, rng, cfg)
+			b, err := sampleExpr(e.Second, rng, cfg)
 			if err != nil {
 				return 0, err
 			}
@@ -100,11 +124,11 @@ func sampleExpr(expr expr, rng *rand.Rand, cfg *config) (int, error) {
 			}
 			return b, nil
 		case functionMin:
-			a, err := sampleExpr(call.first, rng, cfg)
+			a, err := sampleExpr(e.First, rng, cfg)
 			if err != nil {
 				return 0, err
 			}
-			b, err := sampleExpr(call.second, rng, cfg)
+			b, err := sampleExpr(e.Second, rng, cfg)
 			if err != nil {
 				return 0, err
 			}
@@ -113,16 +137,16 @@ func sampleExpr(expr expr, rng *rand.Rand, cfg *config) (int, error) {
 			}
 			return b, nil
 		case functionBest, functionAdv, functionWorst, functionDis:
-			best, err := sampleExpr(call.first, rng, cfg)
+			best, err := sampleExpr(e.First, rng, cfg)
 			if err != nil {
 				return 0, err
 			}
-			for i := 1; i < call.n; i++ {
-				v, err := sampleExpr(call.first, rng, cfg)
+			for i := 1; i < e.N; i++ {
+				v, err := sampleExpr(e.First, rng, cfg)
 				if err != nil {
 					return 0, err
 				}
-				if call.kind == functionBest || call.kind == functionAdv {
+				if e.Kind == functionBest || e.Kind == functionAdv {
 					if v > best {
 						best = v
 					}
@@ -137,7 +161,7 @@ func sampleExpr(expr expr, rng *rand.Rand, cfg *config) (int, error) {
 			return 0, fmt.Errorf("unknown function %s", e.Name)
 		}
 	case *probExpr:
-		d, err := evalMaybeSim(e.expr, cfg)
+		d, err := evalMaybeSim(e.Inner, cfg)
 		if err != nil {
 			return 0, err
 		}

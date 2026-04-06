@@ -3,7 +3,6 @@ package dicestats
 import (
 	"fmt"
 	"math"
-	"sort"
 )
 
 func normalizedKeepCount(kind keepDropKind, n, count int) (int, error) {
@@ -18,27 +17,6 @@ func normalizedKeepCount(kind keepDropKind, n, count int) (int, error) {
 	return keep, nil
 }
 
-func keptSumFromSorted(rolls []int, kind keepDropKind, keep int) int {
-	n := len(rolls)
-	if keep <= 0 {
-		return 0
-	}
-	sum := 0
-	switch kind {
-	case keepHighest, dropLowest:
-		for i := n - keep; i < n; i++ {
-			if i >= 0 {
-				sum += rolls[i]
-			}
-		}
-	case keepLowest, dropHighest:
-		for i := 0; i < keep && i < n; i++ {
-			sum += rolls[i]
-		}
-	}
-	return sum
-}
-
 func keptSumFromFaceCounts(counts []int, kind keepDropKind, keep int) int {
 	if keep <= 0 {
 		return 0
@@ -47,14 +25,14 @@ func keptSumFromFaceCounts(counts []int, kind keepDropKind, keep int) int {
 	remaining := keep
 	if kind == keepHighest || kind == dropLowest {
 		for face := len(counts) - 1; face >= 1 && remaining > 0; face-- {
-			take := minInt(remaining, counts[face])
+			take := min(remaining, counts[face])
 			sum += face * take
 			remaining -= take
 		}
 		return sum
 	}
 	for face := 1; face < len(counts) && remaining > 0; face++ {
-		take := minInt(remaining, counts[face])
+		take := min(remaining, counts[face])
 		sum += face * take
 		remaining -= take
 	}
@@ -105,19 +83,6 @@ func applyBinaryOp(op binaryOp, left, right int) (int, error) {
 	default:
 		return 0, fmt.Errorf("unsupported binary op")
 	}
-}
-
-func sortedCopy(in []int) []int {
-	out := append([]int(nil), in...)
-	sort.Ints(out)
-	return out
-}
-
-func minInt(a, b int) int {
-	if a <= b {
-		return a
-	}
-	return b
 }
 
 func convolveDistributionTimes(base *Distribution, n int) *Distribution {

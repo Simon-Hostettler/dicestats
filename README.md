@@ -1,50 +1,32 @@
 # dicestats
 
-`dicestats` parses dice expressions and evaluates exact probability distributions (with simulation fallback for large spaces).
+`dicestats` is a Go library for computing statistics and probability distributions of TTRPG dice expressions.
 
-## Library API
-
-Import path:
+## Usage
 
 ```go
 import "hostettler.dev/dicestats"
+
+// Query parses a query string and returns the result.
+// Supports E[...], Var[...], StdDev[...], P[...], D[...],
+// or a bare expression (treated as D[...]).
+result, err := dicestats.Query("E[4d6kh3]")
+fmt.Println(result.Value)
+
+result, err = dicestats.Query("P[1d20 + 5 >= 15]")
+fmt.Println(result.Value)
+
+result, err = dicestats.Query("2d6 + 3")
+fmt.Println(result.Distribution.Expected())
+fmt.Println(result.Distribution.PMF())
+
+// Share a cache across calls to reuse computation.
+cache := dicestats.NewCache()
+dicestats.Query("E[4d6kh3]", dicestats.WithCache(cache))
+dicestats.Query("P[4d6kh3 >= 16]", dicestats.WithCache(cache))
 ```
 
-- Use `Query` for query workflows (`E[...]`, `Var[...]`, `StdDev[...]`, `P[...]`, `D[...]`).
-- Use `EvalString` when you want the full output distribution directly from an expression string.
-- Use `WithCache(NewCache())` to reuse computation across calls.
-
-Public entry points:
-
-- `func EvalString(input string, opts ...dicestats.Option) (*dicestats.Distribution, error)`
-- `func Query(input string, opts ...dicestats.Option) (*dicestats.QueryResult, error)`
-- `type Distribution` with methods:
-  - `PMF() map[int]float64`
-  - `Expected() float64`
-  - `Variance() float64`
-  - `StdDev() float64`
-  - `Min() int`, `Max() int`
-  - `Median() int`, `Mode() int`, `Percentile(p float64) int`
-  - `Prob(cmp dicestats.Cmp, value float64) float64`
-  - `Approximate() bool`
-- `type QueryResult` fields:
-  - `Type dicestats.QueryType`
-  - `Value float64`
-  - `Distribution *dicestats.Distribution`
-  - `Approximate bool`
-- Options:
-  - `WithSimulationThreshold(n int)`
-  - `WithSimulationSamples(n int)`
-  - `WithSimulationSeed(seed int64)`
-  - `WithCache(cache *dicestats.Cache)`
-- Caching:
-  - `type Cache`
-  - `func NewCache() *Cache`
-- Comparators and query kinds:
-  - `type Cmp` with `CmpGT`, `CmpGTE`, `CmpLT`, `CmpLTE`, `CmpEQ`, `CmpNE`
-  - `type QueryType` with `QueryProbability`, `QueryExpected`, `QueryVariance`, `QueryStdDev`, `QueryDist`
-- Parse errors:
-  - `type ParseError` (`error`)
+Large expression spaces automatically fall back to Monte Carlo simulation. Use `WithSimulationThreshold`, `WithSimulationSamples`, and `WithSimulationSeed` to control this behavior. Check `result.Approximate` to see whether the result was simulated.
 
 ## Expression interface
 
@@ -82,7 +64,6 @@ Supported expression examples:
 E[expr]         expected value
 Var[expr]       variance
 StdDev[expr]    standard deviation
-P[expr cmp n]   probability query
 D[expr]         full distribution (PMF)
 expr            shorthand for D[expr]
 ```

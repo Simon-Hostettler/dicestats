@@ -58,19 +58,7 @@ func eval(expr expr, opts ...Option) (*Distribution, error) {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	d, err := evalMaybeSim(expr, &cfg)
-	if err != nil {
-		return nil, err
-	}
-	return d, nil
-}
-
-func EvalString(input string, opts ...Option) (*Distribution, error) {
-	expr, err := parse(input)
-	if err != nil {
-		return nil, err
-	}
-	return eval(expr, opts...)
+	return evalMaybeSim(expr, &cfg)
 }
 
 func evalExpr(expr expr, cfg *config) (*Distribution, error) {
@@ -78,38 +66,7 @@ func evalExpr(expr expr, cfg *config) (*Distribution, error) {
 	if d, ok := cfg.cache.Get(key); ok {
 		return d, nil
 	}
-
-	var out *Distribution
-	var err error
-
-	switch e := expr.(type) {
-	case *numberExpr:
-		out = newDistribution(map[int]float64{e.Value: 1}, false)
-	case *diceExpr:
-		if e.Count <= 0 || e.Sides <= 0 {
-			return nil, fmt.Errorf("invalid dice %dd%d", e.Count, e.Sides)
-		}
-		out = evalDice(e.Count, e.Sides)
-	case *repeatExpr:
-		if e.Count <= 0 {
-			return nil, fmt.Errorf("invalid repeat count %d", e.Count)
-		}
-		base, baseErr := evalExpr(e.Base, cfg)
-		if baseErr != nil {
-			return nil, baseErr
-		}
-		out = convolveDistributionTimes(base, e.Count)
-	case *binaryExpr:
-		out, err = evalBinary(e, cfg)
-	case *keepDropExpr:
-		out, err = evalKeepDrop(e)
-	case *funcExpr:
-		out, err = evalFunc(e, cfg)
-	case *probExpr:
-		out, err = evalProbGate(e, cfg)
-	default:
-		return nil, fmt.Errorf("unsupported expression type %T", expr)
-	}
+	out, err := evalExprUncached(expr, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -117,13 +74,44 @@ func evalExpr(expr expr, cfg *config) (*Distribution, error) {
 	return out, nil
 }
 
+func evalExprUncached(expr expr, cfg *config) (*Distribution, error) {
+	switch e := expr.(type) {
+	case *numberExpr:
+		return newDistribution(map[int]float64{e.Value: 1}, false), nil
+	case *diceExpr:
+		if e.Count <= 0 || e.Sides <= 0 {
+			return nil, fmt.Errorf("invalid dice %dd%d", e.Count, e.Sides)
+		}
+		return evalDice(e.Count, e.Sides), nil
+	case *repeatExpr:
+		if e.Count <= 0 {
+			return nil, fmt.Errorf("invalid repeat count %d", e.Count)
+		}
+		base, err := evalExpr(e.Base, cfg)
+		if err != nil {
+			return nil, err
+		}
+		return convolveDistributionTimes(base, e.Count), nil
+	case *binaryExpr:
+		return evalBinary(e, cfg)
+	case *keepDropExpr:
+		return evalKeepDrop(e)
+	case *funcExpr:
+		return evalFunc(e, cfg)
+	case *probExpr:
+		return evalProbGate(e, cfg)
+	default:
+		return nil, fmt.Errorf("unsupported expression type %T", expr)
+	}
+}
+
 func evalMaybeSim(expr expr, cfg *config) (*Distribution, error) {
-	modeAwareKey := cacheKey(expr.Key(), true, cfg)
-	if d, ok := cfg.cache.Get(modeAwareKey); ok {
+	simKey := cacheKey(expr.Key(), true, cfg)
+	if d, ok := cfg.cache.Get(simKey); ok {
 		return d, nil
 	}
-	baseKey := cacheKey(expr.Key(), false, cfg)
-	if d, ok := cfg.cache.Get(baseKey); ok {
+	exactKey := cacheKey(expr.Key(), false, cfg)
+	if d, ok := cfg.cache.Get(exactKey); ok {
 		return d, nil
 	}
 	if estimateEvaluationCost(expr) > cfg.simulationThreshold {
@@ -131,24 +119,25 @@ func evalMaybeSim(expr expr, cfg *config) (*Distribution, error) {
 		if err != nil {
 			return nil, err
 		}
-		cfg.cache.Put(modeAwareKey, d)
+		cfg.cache.Put(simKey, d)
 		return d, nil
 	}
-	return evalExpr(expr, cfg)
+	// Cache already checked above; go straight to uncached eval + store.
+	out, err := evalExprUncached(expr, cfg)
+	if err != nil {
+		return nil, err
+	}
+	cfg.cache.Put(exactKey, out)
+	return out, nil
 }
 
 func evalDice(count, sides int) *Distribution {
-	pmf := map[int]float64{0: 1}
-	for i := 0; i < count; i++ {
-		next := map[int]float64{}
-		for sum, p := range pmf {
-			for face := 1; face <= sides; face++ {
-				next[sum+face] += p * (1 / float64(sides))
-			}
-		}
-		pmf = next
+	single := make(map[int]float64, sides)
+	p := 1.0 / float64(sides)
+	for face := 1; face <= sides; face++ {
+		single[face] = p
 	}
-	return newDistribution(pmf, false)
+	return convolveDistributionTimes(newDistribution(single, false), count)
 }
 
 func evalBinary(e *binaryExpr, cfg *config) (*Distribution, error) {
@@ -213,51 +202,43 @@ func evalKeepDrop(e *keepDropExpr) (*Distribution, error) {
 }
 
 func evalFunc(e *funcExpr, cfg *config) (*Distribution, error) {
-	call, err := parseFunctionCall(e)
-	if err != nil {
-		return nil, err
-	}
-	switch call.kind {
+	switch e.Kind {
 	case functionMax, functionMin:
-		a, err := evalExpr(call.first, cfg)
+		a, err := evalExpr(e.First, cfg)
 		if err != nil {
 			return nil, err
 		}
-		b, err := evalExpr(call.second, cfg)
+		b, err := evalExpr(e.Second, cfg)
 		if err != nil {
 			return nil, err
+		}
+		better := func(x, y int) bool { return x >= y }
+		if e.Kind == functionMin {
+			better = func(x, y int) bool { return x <= y }
 		}
 		pmf := map[int]float64{}
 		for av, ap := range a.pmf {
 			for bv, bp := range b.pmf {
-				if call.kind == functionMax {
-					if av >= bv {
-						pmf[av] += ap * bp
-					} else {
-						pmf[bv] += ap * bp
-					}
+				if better(av, bv) {
+					pmf[av] += ap * bp
 				} else {
-					if av <= bv {
-						pmf[av] += ap * bp
-					} else {
-						pmf[bv] += ap * bp
-					}
+					pmf[bv] += ap * bp
 				}
 			}
 		}
 		return newDistribution(pmf, a.approximate || b.approximate), nil
 	case functionBest, functionAdv:
-		base, err := evalExpr(call.first, cfg)
+		base, err := evalExpr(e.First, cfg)
 		if err != nil {
 			return nil, err
 		}
-		return bestOf(call.n, base), nil
+		return bestOf(e.N, base), nil
 	case functionWorst, functionDis:
-		base, err := evalExpr(call.first, cfg)
+		base, err := evalExpr(e.First, cfg)
 		if err != nil {
 			return nil, err
 		}
-		return worstOf(call.n, base), nil
+		return worstOf(e.N, base), nil
 	default:
 		return nil, fmt.Errorf("unsupported function %s", e.Name)
 	}
@@ -292,7 +273,7 @@ func worstOf(n int, d *Distribution) *Distribution {
 }
 
 func evalProbGate(e *probExpr, cfg *config) (*Distribution, error) {
-	base, err := evalMaybeSim(e.expr, cfg)
+	base, err := evalMaybeSim(e.Inner, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -349,30 +330,24 @@ func estimateEvaluationCost(expr expr) int {
 		}
 		return estimateEvaluationCost(e.Base)
 	case *funcExpr:
-		call, err := parseFunctionCall(e)
-		if err == nil {
-			switch call.kind {
-			case functionAdv, functionDis:
-				return estimateEvaluationCost(call.first)
-			case functionBest, functionWorst:
-				base := estimateEvaluationCost(call.first)
-				return saturatingAdd(base, call.n-1)
-			case functionMax, functionMin:
-				a := estimateEvaluationCost(call.first)
-				b := estimateEvaluationCost(call.second)
-				if a <= 0 || b <= 0 {
-					return 0
-				}
-				return maxInt(a, b)
+		switch e.Kind {
+		case functionAdv, functionDis:
+			return estimateEvaluationCost(e.First)
+		case functionBest, functionWorst:
+			base := estimateEvaluationCost(e.First)
+			return saturatingAdd(base, e.N-1)
+		case functionMax, functionMin:
+			a := estimateEvaluationCost(e.First)
+			b := estimateEvaluationCost(e.Second)
+			if a <= 0 || b <= 0 {
+				return 0
 			}
+			return max(a, b)
+		default:
+			return 1
 		}
-		acc := 1
-		for _, a := range e.Args {
-			acc = saturatingMul(acc, estimateEvaluationCost(a))
-		}
-		return acc
 	case *probExpr:
-		base := estimateEvaluationCost(e.expr)
+		base := estimateEvaluationCost(e.Inner)
 		if base <= 0 {
 			return 0
 		}
@@ -401,13 +376,6 @@ func saturatingAdd(a, b int) int {
 		return math.MaxInt
 	}
 	return a + b
-}
-
-func maxInt(a, b int) int {
-	if a >= b {
-		return a
-	}
-	return b
 }
 
 func estimateDiceConvolutionCost(count, sides int) int {

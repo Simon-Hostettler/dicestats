@@ -125,18 +125,16 @@ func (p *parser) parseFactor() (expr, error) {
 	return atom, nil
 }
 
+var keepDropModifiers = [...]struct {
+	token string
+	kind  keepDropKind
+}{
+	{"kh", keepHighest}, {"kl", keepLowest},
+	{"dh", dropHighest}, {"dl", dropLowest},
+}
+
 func (p *parser) parseKeepDropModifier() (keepDropKind, int, bool, error) {
-	type candidate struct {
-		token string
-		kind  keepDropKind
-	}
-	candidates := []candidate{
-		{token: "kh", kind: keepHighest},
-		{token: "kl", kind: keepLowest},
-		{token: "dh", kind: dropHighest},
-		{token: "dl", kind: dropLowest},
-	}
-	for _, c := range candidates {
+	for _, c := range keepDropModifiers {
 		if p.matchIdent(c.token) {
 			n, err := p.parseIntLiteral()
 			if err != nil {
@@ -227,7 +225,7 @@ func (p *parser) parseProbAtom() (expr, error) {
 	if !p.matchSymbol("]") {
 		return nil, &ParseError{Pos: p.peek().Pos, Message: "expected ']'"}
 	}
-	return &probExpr{expr: e, Cmp: cmp, Value: val}, nil
+	return &probExpr{Inner: e, Cmp: cmp, Value: val}, nil
 }
 
 func (p *parser) isProbAtomStart() bool {
@@ -246,7 +244,7 @@ func (p *parser) parseFuncCall() (expr, error) {
 	name := p.peek().Text
 	p.next()
 	lname := strings.ToLower(name)
-	arity, ok := functionArity(lname)
+	def, ok := functionDefs[lname]
 	if !ok {
 		return nil, &ParseError{Pos: start, Message: "unknown function: " + name}
 	}
@@ -254,26 +252,39 @@ func (p *parser) parseFuncCall() (expr, error) {
 		return nil, &ParseError{Pos: p.peek().Pos, Message: "expected '(' after function name"}
 	}
 	args := make([]expr, 0, 2)
-	if p.matchSymbol(")") {
-		return &funcExpr{Name: lname, Args: args}, nil
-	}
-	for {
-		a, err := p.parseExpr()
-		if err != nil {
-			return nil, err
+	if !p.matchSymbol(")") {
+		for {
+			a, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, a)
+			if p.matchSymbol(")") {
+				break
+			}
+			if !p.matchSymbol(",") {
+				return nil, &ParseError{Pos: p.peek().Pos, Message: "expected ',' or ')'"}
+			}
 		}
-		args = append(args, a)
-		if p.matchSymbol(")") {
-			break
-		}
-		if !p.matchSymbol(",") {
-			return nil, &ParseError{Pos: p.peek().Pos, Message: "expected ',' or ')'"}
-		}
 	}
-	if len(args) != arity {
-		return nil, &ParseError{Pos: start, Message: fmt.Sprintf("%s expects %d args", lname, arity)}
+	if len(args) != def.arity {
+		return nil, &ParseError{Pos: start, Message: fmt.Sprintf("%s expects %d args", lname, def.arity)}
 	}
-	return &funcExpr{Name: lname, Args: args}, nil
+
+	switch def.kind {
+	case functionMax, functionMin:
+		return &funcExpr{Kind: def.kind, Name: lname, First: args[0], Second: args[1]}, nil
+	case functionAdv, functionDis:
+		return &funcExpr{Kind: def.kind, Name: lname, First: args[0], N: 2}, nil
+	case functionBest, functionWorst:
+		nExpr, ok := args[0].(*numberExpr)
+		if !ok || nExpr.Value <= 0 {
+			return nil, &ParseError{Pos: start, Message: lname + " first arg must be positive integer literal"}
+		}
+		return &funcExpr{Kind: def.kind, Name: lname, First: args[1], N: nExpr.Value}, nil
+	default:
+		return nil, &ParseError{Pos: start, Message: "unsupported function: " + lname}
+	}
 }
 
 func (p *parser) parseCmp() (Cmp, error) {

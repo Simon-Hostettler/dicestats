@@ -1,5 +1,7 @@
 # dicestats
 
+![Latest Semver](https://img.shields.io/github/v/tag/Simon-Hostettler/dicestats?label=version&sort=semver)
+
 `dicestats` is a Go library for computing statistics and probability distributions of TTRPG dice expressions.
 
 ## Usage

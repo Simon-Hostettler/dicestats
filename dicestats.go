@@ -16,14 +16,13 @@ type QueryResult struct {
 func (r *QueryResult) String() string {
 	switch r.Type {
 	case QueryExpected, QueryVariance, QueryStdDev, QueryProbability:
-		return strconv.FormatFloat(r.Value, 'f', -1, 64)
+		return strconv.FormatFloat(r.Value, 'g', 10, 64)
 	case QueryDist:
 		if r.Distribution == nil {
 			return "<nil>"
 		}
-		keys := sortedKeys(r.Distribution.pmf)
 		var b strings.Builder
-		for i, k := range keys {
+		for i, k := range r.Distribution.keys {
 			if i > 0 {
 				b.WriteString(", ")
 			}

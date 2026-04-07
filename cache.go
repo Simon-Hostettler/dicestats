@@ -26,3 +26,9 @@ func (c *Cache) Put(key string, d *Distribution) {
 	defer c.mu.Unlock()
 	c.m[key] = d
 }
+
+func (c *Cache) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.m = map[string]*Distribution{}
+}

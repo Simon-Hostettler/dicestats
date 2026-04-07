@@ -9,12 +9,42 @@ const probabilityEpsilon = 1e-15
 
 type Distribution struct {
 	pmf         map[int]float64
+	keys        []int // sorted outcome keys, computed once at construction
 	approximate bool
 }
 
 func newDistribution(pmf map[int]float64, approximate bool) *Distribution {
 	norm := normalizePMF(pmf)
-	return &Distribution{pmf: norm, approximate: approximate}
+	return newDistributionFromNormalized(norm, approximate)
+}
+
+// newDistributionExact builds a Distribution from exact arithmetic.
+// Skips the epsilon filter and map copy, but still
+// renormalizes to correct floating-point drift from convolution/multiplication.
+func newDistributionExact(pmf map[int]float64) *Distribution {
+	sum := 0.0
+	c := 0.0
+	for _, v := range pmf {
+		y := v - c
+		t := sum + y
+		c = (t - sum) - y
+		sum = t
+	}
+	if sum > 0 && sum != 1.0 {
+		for k, v := range pmf {
+			pmf[k] = v / sum
+		}
+	}
+	return newDistributionFromNormalized(pmf, false)
+}
+
+func newDistributionFromNormalized(pmf map[int]float64, approximate bool) *Distribution {
+	keys := make([]int, 0, len(pmf))
+	for k := range pmf {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+	return &Distribution{pmf: pmf, keys: keys, approximate: approximate}
 }
 
 func normalizePMF(pmf map[int]float64) map[int]float64 {
@@ -74,19 +104,17 @@ func (d *Distribution) StdDev() float64 {
 }
 
 func (d *Distribution) Min() int {
-	keys := sortedKeys(d.pmf)
-	if len(keys) == 0 {
+	if len(d.keys) == 0 {
 		return 0
 	}
-	return keys[0]
+	return d.keys[0]
 }
 
 func (d *Distribution) Max() int {
-	keys := sortedKeys(d.pmf)
-	if len(keys) == 0 {
+	if len(d.keys) == 0 {
 		return 0
 	}
-	return keys[len(keys)-1]
+	return d.keys[len(d.keys)-1]
 }
 
 func (d *Distribution) Prob(cmp Cmp, value float64) float64 {
@@ -110,9 +138,8 @@ func (d *Distribution) Percentile(p float64) int {
 	if p >= 1 {
 		return d.Max()
 	}
-	keys := sortedKeys(d.pmf)
 	cum := 0.0
-	for _, k := range keys {
+	for _, k := range d.keys {
 		cum += d.pmf[k]
 		if cum >= p {
 			return k
@@ -139,15 +166,6 @@ func (d *Distribution) Median() int {
 
 func (d *Distribution) Approximate() bool {
 	return d.approximate
-}
-
-func sortedKeys(m map[int]float64) []int {
-	keys := make([]int, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Ints(keys)
-	return keys
 }
 
 func compare(left float64, cmp Cmp, right float64) bool {

@@ -222,6 +222,9 @@ func (p *parser) parseProbAtom() (expr, error) {
 	if err != nil {
 		return nil, err
 	}
+	if (cmp == CmpEQ || cmp == CmpNE) && val != float64(int(val)) {
+		return nil, &ParseError{Pos: p.peek().Pos, Message: "non-integer value in equality comparison; outcomes are always integers"}
+	}
 	if !p.matchSymbol("]") {
 		return nil, &ParseError{Pos: p.peek().Pos, Message: "expected ']'"}
 	}
@@ -273,15 +276,15 @@ func (p *parser) parseFuncCall() (expr, error) {
 
 	switch def.kind {
 	case functionMax, functionMin:
-		return &funcExpr{Kind: def.kind, Name: lname, First: args[0], Second: args[1]}, nil
+		return &binaryFuncExpr{Kind: def.kind, Name: lname, Left: args[0], Right: args[1]}, nil
 	case functionAdv, functionDis:
-		return &funcExpr{Kind: def.kind, Name: lname, First: args[0], N: 2}, nil
+		return &orderStatExpr{Kind: def.kind, Name: lname, Base: args[0], N: 2}, nil
 	case functionBest, functionWorst:
 		nExpr, ok := args[0].(*numberExpr)
 		if !ok || nExpr.Value <= 0 {
 			return nil, &ParseError{Pos: start, Message: lname + " first arg must be positive integer literal"}
 		}
-		return &funcExpr{Kind: def.kind, Name: lname, First: args[1], N: nExpr.Value}, nil
+		return &orderStatExpr{Kind: def.kind, Name: lname, Base: args[1], N: nExpr.Value}, nil
 	default:
 		return nil, &ParseError{Pos: start, Message: "unsupported function: " + lname}
 	}

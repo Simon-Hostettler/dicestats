@@ -1,9 +1,5 @@
 package dicestats
 
-import (
-	"unicode"
-)
-
 type tokenKind int
 
 const (
@@ -24,7 +20,7 @@ func tokenize(input string) ([]token, error) {
 	tokens := make([]token, 0, len(input)/2+1)
 	for pos := 0; pos < len(input); {
 		ch := input[pos]
-		if unicode.IsSpace(rune(ch)) {
+		if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
 			pos++
 			continue
 		}

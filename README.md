@@ -63,11 +63,12 @@ Supported expression examples:
 ## Query interface
 
 ```text
-E[expr]         expected value
-Var[expr]       variance
-StdDev[expr]    standard deviation
-D[expr]         full distribution (PMF)
-expr            shorthand for D[expr]
+E[expr]              expected value
+Var[expr]            variance
+StdDev[expr]         standard deviation
+P[expr cmp number]   probability
+D[expr]              full distribution (PMF)
+expr                 shorthand for D[expr]
 ```
 
 Examples:

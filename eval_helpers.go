@@ -89,8 +89,8 @@ func convolveDistributionTimes(base *Distribution, n int) *Distribution {
 	if n <= 0 {
 		return newDistribution(map[int]float64{0: 1}, base.approximate)
 	}
-	pmf := map[int]float64{0: 1}
-	for i := 0; i < n; i++ {
+	pmf := base.pmf
+	for i := 1; i < n; i++ {
 		next := make(map[int]float64)
 		for lv, lp := range pmf {
 			for rv, rp := range base.pmf {
@@ -99,7 +99,10 @@ func convolveDistributionTimes(base *Distribution, n int) *Distribution {
 		}
 		pmf = next
 	}
-	return newDistribution(pmf, base.approximate)
+	if base.approximate {
+		return newDistribution(pmf, true)
+	}
+	return newDistributionExact(pmf)
 }
 
 func saturatingBinomial(n, k int) int {

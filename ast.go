@@ -2,12 +2,15 @@ package dicestats
 
 import (
 	"fmt"
+	"math/rand"
 	"strconv"
 )
 
 type expr interface {
-	exprNode()
 	Key() string
+	eval(cfg *config) (*Distribution, error)
+	sample(rng *rand.Rand, cfg *config) (int, error)
+	estimateCost() int
 }
 
 type Cmp int
@@ -44,7 +47,6 @@ type numberExpr struct {
 	Value int
 }
 
-func (*numberExpr) exprNode() {}
 func (n *numberExpr) Key() string {
 	return fmt.Sprintf("n(%d)", n.Value)
 }
@@ -54,7 +56,6 @@ type diceExpr struct {
 	Sides int
 }
 
-func (*diceExpr) exprNode() {}
 func (d *diceExpr) Key() string {
 	return fmt.Sprintf("d(%d,%d)", d.Count, d.Sides)
 }
@@ -64,7 +65,6 @@ type repeatExpr struct {
 	Base  expr
 }
 
-func (*repeatExpr) exprNode() {}
 func (r *repeatExpr) Key() string {
 	return fmt.Sprintf("rep(%d,%s)", r.Count, r.Base.Key())
 }
@@ -96,7 +96,6 @@ type binaryExpr struct {
 	Right expr
 }
 
-func (*binaryExpr) exprNode() {}
 func (b *binaryExpr) Key() string {
 	return "(" + b.Op.String() + "," + b.Left.Key() + "," + b.Right.Key() + ")"
 }
@@ -131,7 +130,6 @@ type keepDropExpr struct {
 	N    int
 }
 
-func (*keepDropExpr) exprNode() {}
 func (k *keepDropExpr) Key() string {
 	return k.Kind.String() + "(" + k.Base.Key() + "," + strconv.Itoa(k.N) + ")"
 }
@@ -156,22 +154,28 @@ var functionDefs = map[string]struct {
 	"adv": {1, functionAdv}, "dis": {1, functionDis},
 }
 
-// funcExpr is a resolved function call node. The parser validates
-// arity and resolves Kind so that eval never re-parses function names.
-type funcExpr struct {
-	Kind   functionKind
-	Name   string
-	First  expr
-	Second expr
-	N      int
+// binaryFuncExpr represents binary comparison functions (max, min).
+type binaryFuncExpr struct {
+	Kind  functionKind
+	Name  string
+	Left  expr
+	Right expr
 }
 
-func (*funcExpr) exprNode() {}
-func (f *funcExpr) Key() string {
-	if f.Second != nil {
-		return f.Name + "(" + f.First.Key() + "," + f.Second.Key() + ")"
-	}
-	return f.Name + "(" + strconv.Itoa(f.N) + "," + f.First.Key() + ")"
+func (f *binaryFuncExpr) Key() string {
+	return f.Name + "(" + f.Left.Key() + "," + f.Right.Key() + ")"
+}
+
+// orderStatExpr represents order-statistic functions (best, worst, adv, dis).
+type orderStatExpr struct {
+	Kind functionKind
+	Name string
+	Base expr
+	N    int
+}
+
+func (f *orderStatExpr) Key() string {
+	return f.Name + "(" + strconv.Itoa(f.N) + "," + f.Base.Key() + ")"
 }
 
 type probExpr struct {
@@ -180,7 +184,6 @@ type probExpr struct {
 	Value float64
 }
 
-func (*probExpr) exprNode() {}
 func (p *probExpr) Key() string {
 	return "P[" + p.Inner.Key() + p.Cmp.String() + strconv.FormatFloat(p.Value, 'g', -1, 64) + "]"
 }
@@ -195,7 +198,7 @@ const (
 	QueryDist
 )
 
-type queryExpr struct {
+type parsedQuery struct {
 	Type QueryType
 	Expr expr
 }

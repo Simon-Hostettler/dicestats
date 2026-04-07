@@ -1,6 +1,6 @@
 package dicestats
 
-func parseQuery(input string) (*queryExpr, error) {
+func parseQuery(input string) (*parsedQuery, error) {
 	tokens, err := tokenize(input)
 	if err != nil {
 		return nil, err
@@ -21,7 +21,7 @@ func parseQuery(input string) (*queryExpr, error) {
 			if err != nil {
 				return nil, err
 			}
-			return &queryExpr{Type: qt, Expr: e}, nil
+			return &parsedQuery{Type: qt, Expr: e}, nil
 		}
 
 		// P[expr cmp value] → QueryDist wrapping a probExpr.
@@ -29,18 +29,20 @@ func parseQuery(input string) (*queryExpr, error) {
 		// Otherwise fall through to parse as a bare expression containing
 		// a probExpr sub-expression (e.g. "P[1d20+5>15] * 2d6").
 		if tokens[0].Text == "P" {
-			if p, err := parseBracketContents(tokens, "P"); err == nil {
-				e, err := p.parseExpr()
-				if err == nil {
-					cmp, err := p.parseCmp()
-					if err == nil {
-						value, err := p.parseNumber()
-						if err == nil && p.eof() {
-							return &queryExpr{Type: QueryDist, Expr: &probExpr{Inner: e, Cmp: cmp, Value: value}}, nil
-						}
-					}
-				}
+			result, pErr := parseProbQuery(tokens)
+			if result != nil {
+				return result, nil
 			}
+			// Fall through to bare expression parse; if that also fails,
+			// report the P[] error which is more specific.
+			e, err := parse(input)
+			if err != nil && pErr != nil {
+				return nil, pErr
+			}
+			if err != nil {
+				return nil, err
+			}
+			return &parsedQuery{Type: QueryDist, Expr: e}, nil
 		}
 	}
 
@@ -48,7 +50,33 @@ func parseQuery(input string) (*queryExpr, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &queryExpr{Type: QueryDist, Expr: e}, nil
+	return &parsedQuery{Type: QueryDist, Expr: e}, nil
+}
+
+func parseProbQuery(tokens []token) (*parsedQuery, error) {
+	p, err := parseBracketContents(tokens, "P")
+	if err != nil {
+		return nil, err
+	}
+	e, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	cmp, err := p.parseCmp()
+	if err != nil {
+		return nil, err
+	}
+	value, err := p.parseNumber()
+	if err != nil {
+		return nil, err
+	}
+	if (cmp == CmpEQ || cmp == CmpNE) && value != float64(int(value)) {
+		return nil, &ParseError{Pos: p.peek().Pos, Message: "non-integer value in equality comparison; outcomes are always integers"}
+	}
+	if !p.eof() {
+		return nil, &ParseError{Pos: p.peek().Pos, Message: "unexpected trailing input in P[] query"}
+	}
+	return &parsedQuery{Type: QueryDist, Expr: &probExpr{Inner: e, Cmp: cmp, Value: value}}, nil
 }
 
 // parseBracketContents validates PREFIX [ ... ] structure and returns a parser

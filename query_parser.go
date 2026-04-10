@@ -24,25 +24,8 @@ func parseQuery(input string) (*parsedQuery, error) {
 			return &parsedQuery{Type: qt, Expr: e}, nil
 		}
 
-		// P[expr cmp value] → QueryDist wrapping a probExpr.
-		// Only when the entire input is P[...] (bracket is last token).
-		// Otherwise fall through to parse as a bare expression containing
-		// a probExpr sub-expression (e.g. "P[1d20+5>15] * 2d6").
 		if tokens[0].Text == "P" {
-			result, pErr := parseProbQuery(tokens)
-			if result != nil {
-				return result, nil
-			}
-			// Fall through to bare expression parse; if that also fails,
-			// report the P[] error which is more specific.
-			e, err := parse(input)
-			if err != nil && pErr != nil {
-				return nil, pErr
-			}
-			if err != nil {
-				return nil, err
-			}
-			return &parsedQuery{Type: QueryDist, Expr: e}, nil
+			return parseProbQuery(tokens)
 		}
 	}
 
@@ -76,7 +59,7 @@ func parseProbQuery(tokens []token) (*parsedQuery, error) {
 	if !p.eof() {
 		return nil, &ParseError{Pos: p.peek().Pos, Message: "unexpected trailing input in P[] query"}
 	}
-	return &parsedQuery{Type: QueryDist, Expr: &probExpr{Inner: e, Cmp: cmp, Value: value}}, nil
+	return &parsedQuery{Type: QueryProbability, Expr: &indicatorExpr{Inner: e, Cmp: cmp, Value: value}}, nil
 }
 
 // parseBracketContents validates PREFIX [ ... ] structure and returns a parser

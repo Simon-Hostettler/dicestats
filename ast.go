@@ -178,14 +178,14 @@ func (f *orderStatExpr) Key() string {
 	return f.Name + "(" + strconv.Itoa(f.N) + "," + f.Base.Key() + ")"
 }
 
-type probExpr struct {
+type indicatorExpr struct {
 	Inner expr
 	Cmp   Cmp
 	Value float64
 }
 
-func (p *probExpr) Key() string {
-	return "P[" + p.Inner.Key() + p.Cmp.String() + strconv.FormatFloat(p.Value, 'g', -1, 64) + "]"
+func (p *indicatorExpr) Key() string {
+	return "[" + p.Inner.Key() + p.Cmp.String() + strconv.FormatFloat(p.Value, 'g', -1, 64) + "]"
 }
 
 type QueryType int

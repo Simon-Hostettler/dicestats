@@ -71,13 +71,10 @@ func Query(input string, opts ...Option) (*QueryResult, error) {
 		res.Value = d.Variance()
 	case QueryStdDev:
 		res.Value = d.StdDev()
+	case QueryProbability:
+		res.Value = d.PMF()[1]
 	case QueryDist:
-		if _, ok := q.Expr.(*probExpr); ok {
-			res.Type = QueryProbability
-			res.Value = d.PMF()[1]
-		} else {
-			res.Distribution = d
-		}
+		res.Distribution = d
 	}
 
 	return res, nil

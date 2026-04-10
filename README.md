@@ -41,7 +41,7 @@ atom    = INTEGER
         | [INTEGER] 'd' INTEGER
         | '(' expr ')'
         | func '(' args ')'
-        | 'P[' expr cmp number ']'
+        | '[' expr cmp number ']'
 modifier = 'kh' INTEGER | 'kl' INTEGER | 'dh' INTEGER | 'dl' INTEGER
 args    = expr (',' expr)*
 func    = max | min | best | worst | adv | dis
@@ -58,7 +58,7 @@ Supported expression examples:
 - `3(max(3, 1d6 + 1))` (three independent draws of inner expression, summed)
 - `max(1, 1d4-2)`, `min(20, 1d20+5)`
 - `best(3, 1d20)`, `worst(2, 1d20)`, `adv(1d20)`, `dis(1d20)`
-- `P[1d20 + 7 >= 15] * (2d6 + 4)` (probability gate inside expressions)
+- `[1d20 + 7 >= 15] * (2d6 + 4)` (indicator variable)
 
 ## Query interface
 

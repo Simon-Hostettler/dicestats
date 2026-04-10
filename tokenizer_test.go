@@ -38,7 +38,7 @@ func TestTokenizeRecognizesFloatForProbQuery(t *testing.T) {
 }
 
 func TestParseWithWhitespaceEverywhere(t *testing.T) {
-	_, err := parse(" 4 d6 \t kh 3 + P [ 1 d20 + 5 >= 15 ] * 2 ")
+	_, err := parse(" 4 d6 \t kh 3 + [ 1 d20 + 5 >= 15 ] * 2 ")
 	if err != nil {
 		t.Fatalf("expected parser to accept whitespace-heavy input, got: %v", err)
 	}

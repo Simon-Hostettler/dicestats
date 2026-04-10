@@ -258,7 +258,7 @@ func worstOf(n int, d *Distribution) *Distribution {
 	return newDistributionExact(pmf)
 }
 
-func evalProbGate(e *probExpr, cfg *config) (*Distribution, error) {
+func evalIndicator(e *indicatorExpr, cfg *config) (*Distribution, error) {
 	base, err := evalMaybeSim(e.Inner, cfg)
 	if err != nil {
 		return nil, err

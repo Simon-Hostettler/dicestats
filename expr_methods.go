@@ -231,13 +231,13 @@ func (e *orderStatExpr) estimateCost() int {
 	return saturatingAdd(base, e.N-1)
 }
 
-// --- probExpr ---
+// --- indicatorExpr ---
 
-func (e *probExpr) eval(cfg *config) (*Distribution, error) {
-	return evalProbGate(e, cfg)
+func (e *indicatorExpr) eval(cfg *config) (*Distribution, error) {
+	return evalIndicator(e, cfg)
 }
 
-func (e *probExpr) sample(rng *rand.Rand, cfg *config) (int, error) {
+func (e *indicatorExpr) sample(rng *rand.Rand, cfg *config) (int, error) {
 	d, err := evalMaybeSim(e.Inner, cfg)
 	if err != nil {
 		return 0, err
@@ -249,7 +249,7 @@ func (e *probExpr) sample(rng *rand.Rand, cfg *config) (int, error) {
 	return 0, nil
 }
 
-func (e *probExpr) estimateCost() int {
+func (e *indicatorExpr) estimateCost() int {
 	base := e.Inner.estimateCost()
 	if base <= 0 {
 		return 0

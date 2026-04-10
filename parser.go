@@ -162,8 +162,8 @@ func (p *parser) parseAtom() (expr, error) {
 		return e, nil
 	}
 
-	if p.isProbAtomStart() {
-		return p.parseProbAtom()
+	if p.isIndicatorStart() {
+		return p.parseIndicatorAtom()
 	}
 
 	if p.peek().Kind == tokenInt {
@@ -206,9 +206,9 @@ func (p *parser) parseAtom() (expr, error) {
 	return nil, &ParseError{Pos: p.peek().Pos, Message: fmt.Sprintf("unexpected character '%s'", p.peek().Text)}
 }
 
-func (p *parser) parseProbAtom() (expr, error) {
-	if !p.matchIdent("P") || !p.matchSymbol("[") {
-		return nil, &ParseError{Pos: p.peek().Pos, Message: "expected 'P['"}
+func (p *parser) parseIndicatorAtom() (expr, error) {
+	if !p.matchSymbol("[") {
+		return nil, &ParseError{Pos: p.peek().Pos, Message: "expected '['"}
 	}
 	e, err := p.parseExpr()
 	if err != nil {
@@ -228,18 +228,11 @@ func (p *parser) parseProbAtom() (expr, error) {
 	if !p.matchSymbol("]") {
 		return nil, &ParseError{Pos: p.peek().Pos, Message: "expected ']'"}
 	}
-	return &probExpr{Inner: e, Cmp: cmp, Value: val}, nil
+	return &indicatorExpr{Inner: e, Cmp: cmp, Value: val}, nil
 }
 
-func (p *parser) isProbAtomStart() bool {
-	if p.peek().Kind != tokenIdent || p.peek().Text != "P" {
-		return false
-	}
-	if p.pos+1 >= len(p.tokens) {
-		return false
-	}
-	next := p.tokens[p.pos+1]
-	return next.Kind == tokenSymbol && next.Text == "["
+func (p *parser) isIndicatorStart() bool {
+	return p.peek().Kind == tokenSymbol && p.peek().Text == "["
 }
 
 func (p *parser) parseFuncCall() (expr, error) {

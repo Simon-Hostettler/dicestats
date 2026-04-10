@@ -130,8 +130,8 @@ func TestBestAndWorstOfThreeExpectedValues(t *testing.T) {
 	}
 }
 
-func TestProbGateDamage(t *testing.T) {
-	r, err := Query("E[P[1d20 + 10 > 15] * 5d6]")
+func TestIndicatorDamage(t *testing.T) {
+	r, err := Query("E[[1d20 + 10 > 15] * 5d6]")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,8 +140,8 @@ func TestProbGateDamage(t *testing.T) {
 	}
 }
 
-func TestProbGateDistributionShape(t *testing.T) {
-	d := mustDist(t, "P[1d20+10>15] * 1d4")
+func TestIndicatorDistributionShape(t *testing.T) {
+	d := mustDist(t, "[1d20+10>15] * 1d4")
 	pmf := d.PMF()
 	if _, ok := pmf[0]; !ok {
 		t.Fatal("expected miss branch at 0")
@@ -274,8 +274,8 @@ func TestSimulationFallback(t *testing.T) {
 	}
 }
 
-func TestNestedProbExprSimulationUsesConfig(t *testing.T) {
-	d := mustDist(t, "P[P[20d20*20d20 > 20000] = 1] * 1d6",
+func TestNestedIndicatorSimulationUsesConfig(t *testing.T) {
+	d := mustDist(t, "[[20d20*20d20 > 20000] = 1] * 1d6",
 		WithSimulationThreshold(1000),
 		WithSimulationSamples(4000),
 	)
